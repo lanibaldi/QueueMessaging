@@ -1,0 +1,85 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Messaging;
+using System.Text;
+using log4net;
+
+namespace QueueMessaging
+{
+    /// <summary>
+    /// Manage queue message counting 
+    /// </summary>
+    public class MessageCounter
+    {
+        static object lockObject = new Object();
+
+        public long CountQueueMessages(string queueName)
+        {
+            ILog logger = LogManager.GetLogger(GetType().FullName);
+
+            lock (lockObject)
+            {
+                if (string.IsNullOrEmpty(queueName))
+                {
+                    Console.WriteLine("Queue name is null or empty.");
+                    if (logger != null)
+                        logger.Error("Queue name is null or empty.");
+                    return 0;
+                }
+                if (!MessageQueue.Exists(queueName))
+                {
+                    Console.WriteLine("Queue \"{0}\" does not exist.", queueName);
+                    if (logger != null)
+                        logger.ErrorFormat("Queue \"{0}\" does not exist.", queueName);
+                    return 0;
+                }
+
+                MessageQueue queue = new MessageQueue(queueName);
+                int count = GetMessageCount(queue);
+
+                Console.WriteLine(string.Format("{0} - Queue \"{1}\" contains {2} messages.",
+                    DateTime.Now.ToString("s"), queueName, count));
+                if (logger != null)
+                    logger.InfoFormat("{0} - Queue \"{1}\" contains {2} messages.", 
+                        DateTime.Now.ToString("s"), queueName, count);
+
+                return count;
+            }
+        }
+
+        private int GetMessageCount(MessageQueue queue)
+        {
+            int count = 0;
+            Cursor cursor = queue.CreateCursor();
+
+            Message m = PeekWithoutTimeout(queue, cursor, PeekAction.Current);
+            if (m != null)
+            {
+                count = 1;
+                while ((m = PeekWithoutTimeout(queue, cursor, PeekAction.Next)) != null)
+                {
+                    count++;
+                }
+            }
+            return count;     
+        }
+
+        private Message PeekWithoutTimeout(MessageQueue queue, Cursor cursor, PeekAction peekAction)
+        {
+            Message ret = null;
+            try
+            {
+                ret = queue.Peek(new TimeSpan(1), cursor, peekAction);
+            }
+            catch (MessageQueueException mqe)
+            {
+                if (!mqe.Message.ToLower().Contains("timeout"))
+                {
+                    throw;
+                }
+            }
+            return ret;
+        }
+    }
+}
